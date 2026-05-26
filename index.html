@@ -1,142 +1,373 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Breathe Easy UTEP</title>
-<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Fraunces:ital,wght@0,300;0,700;1,300&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { background-color: #0b1f0f; font-family: Arial, sans-serif; }
+html, body, #root { height: 100%; }
+body {
+background: #0b1f0f;
+font-family: 'DM Sans', Arial, sans-serif;
+color: #f0fdf4;
+}
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(74,222,128,0.3); border-radius: 4px; }
 input::placeholder { color: rgba(255,255,255,0.3); }
-input:focus { outline: none; border-color: #4ade80 !important; }
+input:focus { outline: none !important; border-color: rgba(74,222,128,0.6) !important; }
+button:hover:not(:disabled) { opacity: 0.9; transform: scale(1.02); }
+button { transition: all 0.15s ease; }
+@keyframes fadeUp {
+from { opacity: 0; transform: translateY(8px); }
+to { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulse {
+0%, 100% { opacity: 1; }
+50% { opacity: 0.4; }
+}
+.msg { animation: fadeUp 0.3s ease forwards; }
+.thinking { animation: pulse 1.2s ease-in-out infinite; }
 </style>
 </head>
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const { useState } = React;
 
-const SYSTEM_PROMPT = `You are the Breathe Easy UTEP AI Assistant — a friendly health guide for students at the University of Texas at El Paso.
+const { useState, useRef, useEffect } = React;
 
-Key facts you know:
-- El Paso ranks among the top 25 most polluted US cities
-- El Paso received an F grade for ozone and particle pollution in 2022
-- UTEP enrolls 26,000 students, 84% are Latino
-- Free N95 masks available at UTEP Student Health Center
-- Check air quality at airnow.gov
+const SYSTEM_PROMPT = `You are the Breathe Easy UTEP AI Assistant — a warm, knowledgeable health guide for students at the University of Texas at El Paso (UTEP).
 
-AQI Guide:
-- 0-50: Good - Safe to go outside
-- 51-100: Moderate - Sensitive people take care
-- 101-150: Unhealthy for Sensitive Groups - Limit outdoor time
-- 151-200: Unhealthy - Wear N95 mask
-- 201+: Hazardous - Stay indoors
+YOUR PURPOSE: Help UTEP students understand El Paso air quality, protect their respiratory health, and access free campus resources.
 
-Always be friendly, bilingual, and mention free campus resources.`;
+KEY FACTS:
+- El Paso ranks among the top 25 most polluted US cities for ozone and particle pollution (ALA, 2023)
+- El Paso received an F grade for ozone and short-term particle pollution in 2022
+- PM2.5 frequently exceeds EPA 24-hour standard of 35 ug/m3
+- UTEP enrolls ~23,000 students; ~84% are Latino — disproportionately affected by environmental health disparities
+- National asthma prevalence among college-age adults is ~9.8% (CDC, 2022)
+- Sources of pollution: cross-border traffic, Saharan dust events, agricultural burning, seasonal wildfires
 
-function Header() {
-return (
-<div style={{textAlign:"center", padding:"20px", borderBottom:"1px solid rgba(255,255,255,0.1)"}}>
-<h1 style={{color:"#4ade80", fontSize:"28px"}}>🌬️ Breathe Easy UTEP</h1>
-<p style={{color:"#86efac", fontSize:"13px", marginTop:"4px"}}>Air Quality AI Assistant · Free · Always Available</p>
-</div>
-);
+AQI GUIDE:
+- 0-50 (Green): Good — Safe to go outside, no precautions needed
+- 51-100 (Yellow): Moderate — Acceptable; very sensitive people should limit prolonged outdoor exertion
+- 101-150 (Orange): Unhealthy for Sensitive Groups — Students with asthma should limit outdoor activity
+- 151-200 (Red): Unhealthy — Everyone may experience effects; wear N95 outdoors
+- 201-300 (Purple): Very Unhealthy — Health alert; avoid outdoor activity
+- 301+ (Maroon): Hazardous — Emergency conditions; stay indoors
+
+FREE CAMPUS RESOURCES:
+- Free N95 masks at UTEP Student Health and Counseling Center
+- Pop-up mask distribution at campus entry points when AQI > 100
+- Check live El Paso AQI at airnow.gov
+- UTEP Center for Environmental Resource Management (CERM) for data
+
+PROTECTIVE BEHAVIORS:
+- Check airnow.gov daily before going outside
+- Wear free N95 mask when AQI > 100
+- Limit outdoor exercise on high-AQI days
+- Keep windows closed and use indoor air filtration
+- On extreme days, contact professors about remote attendance
+
+TONE: Warm, student-centered, evidence-based, never overwhelming.
+LANGUAGE: If student writes in Spanish, respond in Spanish. You are bilingual.
+SAFETY: Never diagnose medical conditions. Always refer personal health concerns to the Student Health Center.
+FORMAT: Keep responses concise, use short paragraphs. Always end with an actionable tip or resource.`;
+
+const SUGGESTED = [
+"Is it safe to walk to class today?",
+"Where do I get a free N95 mask?",
+"Why is El Paso's air so bad?",
+"I have asthma — what should I do?",
+"¿Cómo me protejo del smog?",
+];
+
+function App() {
+const [messages, setMessages] = useState([{
+role: "assistant",
+text: "👋 ¡Bienvenidos! I'm your Breathe Easy UTEP AI assistant.\n\nI'm here to help you understand El Paso's air quality and protect your health — for free, 24/7.\n\nAsk me anything about AQI, N95 masks, asthma, or campus resources!"
+}]);
+const [input, setInput] = useState("");
+const [loading, setLoading] = useState(false);
+const bottomRef = useRef(null);
+const inputRef = useRef(null);
+
+useEffect(() => {
+bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+}, [messages, loading]);
+
+async function handleSend(text) {
+const userText = (text || input).trim();
+if (!userText || loading) return;
+
+const newMessages = [...messages, { role: "user", text: userText }];
+setMessages(newMessages);
+setInput("");
+setLoading(true);
+
+try {
+const apiMessages = newMessages.map(m => ({
+role: m.role,
+content: m.text
+}));
+
+const response = await fetch("/.netlify/functions/chat", {
+method: "POST",
+headers: { "Content-Type": "application/json" },
+body: JSON.stringify({
+model: "claude-sonnet-4-20250514",
+max_tokens: 1000,
+system: SYSTEM_PROMPT,
+messages: apiMessages
+})
+});
+
+if (!response.ok) {
+throw new Error("Server error: " + response.status);
 }
 
-function Message({ msg }) {
-var isUser = msg.role === "user";
+const data = await response.json();
+
+if (data.error) {
+throw new Error(data.error);
+}
+
+const reply = data.content && data.content[0] && data.content[0].text
+? data.content[0].text
+: "Sorry, I couldn't get a response. Please try again.";
+
+setMessages([...newMessages, { role: "assistant", text: reply }]);
+} catch (error) {
+console.error("Chat error:", error);
+setMessages([...newMessages, {
+role: "assistant",
+text: "⚠️ I'm having trouble connecting right now. Please try again in a moment!\n\nFor urgent air quality info, visit airnow.gov or pick up a free N95 at the Student Health Center."
+}]);
+} finally {
+setLoading(false);
+inputRef.current?.focus();
+}
+}
+
+function handleKeyDown(e) {
+if (e.key === "Enter" && !e.shiftKey) {
+e.preventDefault();
+handleSend();
+}
+}
+
 return (
-<div style={{display:"flex", justifyContent: isUser ? "flex-end" : "flex-start", marginBottom:"12px"}}>
 <div style={{
-backgroundColor: isUser ? "#16a34a" : "#1a3a1f",
-color:"#f0fdf4",
-padding:"12px 16px",
+height: "100vh",
+display: "flex",
+flexDirection: "column",
+maxWidth: "680px",
+margin: "0 auto",
+background: "#0b1f0f"
+}}>
+
+{/* Header */}
+<div style={{
+padding: "18px 24px",
+borderBottom: "1px solid rgba(74,222,128,0.15)",
+background: "rgba(0,0,0,0.2)",
+display: "flex",
+alignItems: "center",
+gap: "12px",
+flexShrink: 0
+}}>
+<div style={{
+width: 40, height: 40,
+borderRadius: 12,
+background: "linear-gradient(135deg, #4ade80, #059669)",
+display: "flex", alignItems: "center", justifyContent: "center",
+fontSize: 20, flexShrink: 0
+}}>🌬️</div>
+<div>
+<div style={{
+fontFamily: "'Fraunces', serif",
+fontSize: 18, fontWeight: 700,
+color: "#f0fdf4", lineHeight: 1.1
+}}>Breathe Easy UTEP</div>
+<div style={{
+fontSize: 12, color: "#4ade80",
+display: "flex", alignItems: "center", gap: 5, marginTop: 2
+}}>
+<span style={{
+width: 6, height: 6, borderRadius: "50%",
+background: "#4ade80", display: "inline-block"
+}}/>
+AI Health Assistant · Free · Always Available
+</div>
+</div>
+</div>
+
+{/* Messages */}
+<div style={{
+flex: 1,
+overflowY: "auto",
+padding: "20px 20px 8px"
+}}>
+
+{messages.map((msg, i) => {
+const isUser = msg.role === "user";
+return (
+<div key={i} className="msg" style={{
+display: "flex",
+justifyContent: isUser ? "flex-end" : "flex-start",
+marginBottom: 12
+}}>
+{!isUser && (
+<div style={{
+width: 28, height: 28,
+borderRadius: 8,
+background: "linear-gradient(135deg, #4ade80, #059669)",
+display: "flex", alignItems: "center",
+justifyContent: "center",
+fontSize: 14, flexShrink: 0,
+marginRight: 8, marginTop: 2
+}}>🌬️</div>
+)}
+<div style={{
+maxWidth: "78%",
+padding: "11px 15px",
 borderRadius: isUser ? "18px 18px 4px 18px" : "4px 18px 18px 18px",
-maxWidth:"75%",
-fontSize:"15px",
-lineHeight:"1.5",
-border:"1px solid rgba(255,255,255,0.07)"
+background: isUser
+? "linear-gradient(135deg, #16a34a, #059669)"
+: "rgba(255,255,255,0.05)",
+border: isUser ? "none" : "1px solid rgba(255,255,255,0.08)",
+fontSize: 14,
+lineHeight: 1.65,
+color: "#f0fdf4",
+whiteSpace: "pre-wrap"
 }}>
 {msg.text}
 </div>
 </div>
 );
-}
+})}
 
-function ChatBox({ messages, loading }) {
-return (
-<div style={{flex:1, overflowY:"auto", padding:"20px", display:"flex", flexDirection:"column"}}>
-{messages.map((msg, index) => <Message key={index} msg={msg} />)}
-{loading && <div style={{color:"#4ade80", fontSize:"14px", padding:"8px"}}>✦ Thinking...</div>}
+{loading && (
+<div className="msg" style={{
+display: "flex", alignItems: "center", gap: 8,
+padding: "10px 4px"
+}}>
+<div style={{
+width: 28, height: 28, borderRadius: 8,
+background: "linear-gradient(135deg, #4ade80, #059669)",
+display: "flex", alignItems: "center",
+justifyContent: "center", fontSize: 14
+}}>🌬️</div>
+<div style={{
+display: "flex", gap: 5, padding: "10px 14px",
+background: "rgba(255,255,255,0.05)",
+border: "1px solid rgba(255,255,255,0.08)",
+borderRadius: "4px 18px 18px 18px"
+}}>
+{[0,1,2].map(i => (
+<div key={i} className="thinking" style={{
+width: 7, height: 7,
+borderRadius: "50%",
+background: "#4ade80",
+animationDelay: i * 0.2 + "s"
+}}/>
+))}
 </div>
-);
-}
+</div>
+)}
 
-function InputBar({ onSend, loading }) {
-const [input, setInput] = useState("");
-function handleSend() {
-if (input.trim() === "" || loading) return;
-onSend(input);
-setInput("");
-}
-return (
-<div style={{display:"flex", gap:"10px", padding:"16px", borderTop:"1px solid rgba(255,255,255,0.1)"}}>
+<div ref={bottomRef} />
+</div>
+
+{/* Suggested questions — only show before first user message */}
+{messages.length === 1 && (
+<div style={{
+padding: "0 20px 12px",
+display: "flex", flexWrap: "wrap", gap: 8
+}}>
+{SUGGESTED.map((q, i) => (
+<button key={i} onClick={() => handleSend(q)} style={{
+background: "rgba(74,222,128,0.08)",
+border: "1px solid rgba(74,222,128,0.25)",
+borderRadius: 20,
+padding: "6px 14px",
+fontSize: 12,
+color: "#86efac",
+cursor: "pointer",
+fontFamily: "'DM Sans', sans-serif"
+}}>{q}</button>
+))}
+</div>
+)}
+
+{/* Input */}
+<div style={{
+padding: "12px 16px 16px",
+borderTop: "1px solid rgba(255,255,255,0.07)",
+flexShrink: 0
+}}>
+<div style={{
+display: "flex", gap: 10,
+background: "rgba(255,255,255,0.05)",
+border: "1px solid rgba(255,255,255,0.1)",
+borderRadius: 14,
+padding: "8px 8px 8px 16px",
+alignItems: "center"
+}}>
 <input
+ref={inputRef}
 type="text"
 value={input}
-onChange={(e) => setInput(e.target.value)}
-onKeyDown={(e) => e.key === "Enter" && handleSend()}
-placeholder="Ask about El Paso air quality..."
-style={{flex:1, backgroundColor:"#1a3a1f", border:"1px solid rgba(255,255,255,0.15)", borderRadius:"10px", padding:"12px 16px", color:"#f0fdf4", fontSize:"15px"}}
+onChange={e => setInput(e.target.value)}
+onKeyDown={handleKeyDown}
+placeholder="Ask about air quality, masks, health tips..."
+disabled={loading}
+style={{
+flex: 1,
+background: "none",
+border: "none",
+color: "#f0fdf4",
+fontSize: 14,
+fontFamily: "'DM Sans', sans-serif",
+padding: "4px 0"
+}}
 />
-<button onClick={handleSend} disabled={loading} style={{backgroundColor: loading ? "#166534" : "#4ade80", color:"#0b1f0f", border:"none", borderRadius:"10px", padding:"12px 20px", fontSize:"16px", cursor: loading ? "not-allowed" : "pointer", fontWeight:"bold"}}>↑</button>
+<button
+onClick={() => handleSend()}
+disabled={loading || !input.trim()}
+style={{
+width: 36, height: 36,
+borderRadius: 10,
+border: "none",
+background: loading || !input.trim() ? "rgba(74,222,128,0.3)" : "#16a34a",
+color: "#fff",
+fontSize: 16,
+cursor: loading || !input.trim() ? "not-allowed" : "pointer",
+display: "flex", alignItems: "center", justifyContent: "center",
+flexShrink: 0
+}}>↑</button>
 </div>
-);
-}
+<p style={{
+fontSize: 11, color: "#4b5563",
+textAlign: "center", marginTop: 8
+}}>
+For personal medical concerns, visit UTEP Student Health &amp; Counseling Center
+</p>
+</div>
 
-function App() {
-const [messages, setMessages] = useState([
-{role:"assistant", text:"👋 ¡Bienvenidos! I'm your Breathe Easy UTEP assistant. Ask me anything about El Paso air quality, N95 masks, or protecting your health on campus!"}
-]);
-const [loading, setLoading] = useState(false);
-
-async function handleSend(text) {
-var newMessages = [...messages, {role:"user", text:text}];
-setMessages(newMessages);
-setLoading(true);
-try {
-var response = await fetch("/api/chat", {
-method:"POST",
-headers:{"Content-Type":"application/json"},
-body: JSON.stringify({
-model:"claude-sonnet-4-20250514",
-max_tokens:1000,
-system: SYSTEM_PROMPT,
-messages: newMessages.map(m => ({role:m.role, content:m.text}))
-})
-});
-var data = await response.json();
-var reply = data.content[0].text;
-setMessages([...newMessages, {role:"assistant", text:reply}]);
-} catch(error) {
-setMessages([...newMessages, {role:"assistant", text:"⚠️ Connection error. Please try again!"}]);
-} finally {
-setLoading(false);
-}
-}
-
-return (
-<div style={{backgroundColor:"#0b1f0f", height:"100vh", display:"flex", flexDirection:"column", maxWidth:"600px", margin:"0 auto"}}>
-<Header />
-<ChatBox messages={messages} loading={loading} />
-<InputBar onSend={handleSend} loading={loading} />
 </div>
 );
 }
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(<App />);
+
 </script>
 </body>
 </html>
+
