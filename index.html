@@ -29,7 +29,32 @@ button { transition: all 0.15s ease; }
 <script type="text/babel">
 const { useState, useRef, useEffect } = React;
 
-const SYSTEM_PROMPT = `You are the Breathe Easy UTEP AI Assistant — a warm, knowledgeable health guide for students at the University of Texas at El Paso (UTEP).
+function getAQIColor(aqi) {
+if (!aqi) return "#4ade80";
+if (aqi <= 50) return "#4ade80";
+if (aqi <= 100) return "#facc15";
+if (aqi <= 150) return "#fb923c";
+if (aqi <= 200) return "#f87171";
+return "#c084fc";
+}
+
+function getAQILabel(aqi) {
+if (!aqi) return "Loading...";
+if (aqi <= 50) return "Good";
+if (aqi <= 100) return "Moderate";
+if (aqi <= 150) return "Unhealthy for Sensitive Groups";
+if (aqi <= 200) return "Unhealthy";
+return "Hazardous";
+}
+
+function buildSystemPrompt(aqi) {
+const aqiInfo = aqi
+? `IMPORTANT — TODAY'S LIVE EL PASO AQI IS: ${aqi} (${getAQILabel(aqi)}). Always reference this specific number when answering questions about today's air quality.`
+: "Live AQI data is currently unavailable. Direct students to airnow.gov for current data.";
+
+return `You are the Breathe Easy UTEP AI Assistant — a warm, knowledgeable health guide for students at the University of Texas at El Paso (UTEP).
+
+${aqiInfo}
 
 YOUR PURPOSE: Help UTEP students understand El Paso air quality, protect their respiratory health, and access free campus resources.
 
@@ -49,6 +74,7 @@ AQI GUIDE:
 
 TONE: Warm, bilingual, student-centered. Respond in Spanish if student writes in Spanish.
 Never diagnose medical conditions. Always end with an actionable tip.`;
+}
 
 const SUGGESTED = [
 "Is it safe to walk to class today?",
@@ -61,14 +87,38 @@ const SUGGESTED = [
 function App() {
 const [messages, setMessages] = useState([{
 role: "assistant",
-text: "👋 ¡Bienvenidos! I'm your Breathe Easy UTEP AI assistant.\n\nI'm here to help you understand El Paso's air quality and protect your health — for free, 24/7.\n\nAsk me anything about AQI, N95 masks, asthma, or campus resources!"
+text: "👋 ¡Bienvenidos! I'm your Breathe Easy UTEP AI assistant.\n\nI'm checking today's El Paso air quality right now...\n\nAsk me anything about AQI, N95 masks, asthma, or campus resources!"
 }]);
 const [input, setInput] = useState("");
 const [loading, setLoading] = useState(false);
+const [liveAQI, setLiveAQI] = useState(null);
 const bottomRef = useRef(null);
 const inputRef = useRef(null);
 
-useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, loading]);
+useEffect(() => {
+fetchLiveAQI();
+}, []);
+
+useEffect(() => {
+bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+}, [messages, loading]);
+
+async function fetchLiveAQI() {
+try {
+const response = await fetch(
+"https://air-quality-api.open-meteo.com/v1/air-quality?latitude=31.7619&longitude=-106.4850&current=us_aqi"
+);
+const data = await response.json();
+const aqi = data.current.us_aqi;
+setLiveAQI(aqi);
+setMessages([{
+role: "assistant",
+text: `👋 ¡Bienvenidos! I'm your Breathe Easy UTEP AI assistant.\n\n📊 Today's El Paso AQI is ${aqi} — ${getAQILabel(aqi)}.\n\nAsk me anything about today's air quality, N95 masks, asthma, or campus resources!`
+}]);
+} catch (error) {
+console.log("AQI fetch failed:", error);
+}
+}
 
 async function handleSend(text) {
 const userText = (text || input).trim();
@@ -84,7 +134,7 @@ headers: { "Content-Type": "application/json" },
 body: JSON.stringify({
 model: "claude-haiku-4-5-20251001",
 max_tokens: 1000,
-system: SYSTEM_PROMPT,
+system: buildSystemPrompt(liveAQI),
 messages: newMessages.map(m => ({ role: m.role, content: m.text }))
 })
 });
@@ -104,18 +154,33 @@ inputRef.current?.focus();
 }
 }
 
+const aqiColor = getAQIColor(liveAQI);
+
 return (
 <div style={{ height:"100vh", display:"flex", flexDirection:"column", maxWidth:"680px", margin:"0 auto", background:"#0b1f0f" }}>
-<div style={{ padding:"18px 24px", borderBottom:"1px solid rgba(74,222,128,0.15)", background:"rgba(0,0,0,0.2)", display:"flex", alignItems:"center", gap:"12px", flexShrink:0 }}>
+
+{/* Header */}
+<div style={{ padding:"14px 20px", borderBottom:"1px solid rgba(74,222,128,0.15)", background:"rgba(0,0,0,0.2)", display:"flex", alignItems:"center", gap:"12px", flexShrink:0 }}>
 <div style={{ width:40, height:40, borderRadius:12, background:"linear-gradient(135deg, #4ade80, #059669)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>🌬️</div>
-<div>
+<div style={{ flex:1 }}>
 <div style={{ fontFamily:"'Fraunces', serif", fontSize:18, fontWeight:700, color:"#f0fdf4" }}>Breathe Easy UTEP</div>
 <div style={{ fontSize:12, color:"#4ade80", display:"flex", alignItems:"center", gap:5, marginTop:2 }}>
 <span style={{ width:6, height:6, borderRadius:"50%", background:"#4ade80", display:"inline-block" }}/>
 AI Health Assistant · Free · Always Available
 </div>
 </div>
+{/* Live AQI Badge */}
+<div style={{ background:"rgba(255,255,255,0.05)", border:`1px solid ${aqiColor}40`, borderRadius:10, padding:"6px 12px", textAlign:"center", flexShrink:0 }}>
+<div style={{ fontSize:20, fontWeight:700, color:aqiColor, lineHeight:1 }}>
+{liveAQI || "—"}
 </div>
+<div style={{ fontSize:9, color:"#6b7280", marginTop:2, textTransform:"uppercase", letterSpacing:"0.05em" }}>
+AQI NOW
+</div>
+</div>
+</div>
+
+{/* Messages */}
 <div style={{ flex:1, overflowY:"auto", padding:"20px 20px 8px" }}>
 {messages.map((msg, i) => {
 const isUser = msg.role === "user";
@@ -138,6 +203,8 @@ return (
 )}
 <div ref={bottomRef}/>
 </div>
+
+{/* Suggested questions */}
 {messages.length === 1 && (
 <div style={{ padding:"0 20px 12px", display:"flex", flexWrap:"wrap", gap:8 }}>
 {SUGGESTED.map((q, i) => (
@@ -145,6 +212,8 @@ return (
 ))}
 </div>
 )}
+
+{/* Input */}
 <div style={{ padding:"12px 16px 16px", borderTop:"1px solid rgba(255,255,255,0.07)", flexShrink:0 }}>
 <div style={{ display:"flex", gap:10, background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:14, padding:"8px 8px 8px 16px", alignItems:"center" }}>
 <input ref={inputRef} type="text" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key==="Enter" && !e.shiftKey && (e.preventDefault(), handleSend())} placeholder="Ask about air quality, masks, health tips..." disabled={loading} style={{ flex:1, background:"none", border:"none", color:"#f0fdf4", fontSize:14, fontFamily:"'DM Sans', sans-serif", padding:"4px 0" }}/>
@@ -152,6 +221,7 @@ return (
 </div>
 <p style={{ fontSize:11, color:"#4b5563", textAlign:"center", marginTop:8 }}>For personal medical concerns, visit UTEP Student Health &amp; Counseling Center</p>
 </div>
+
 </div>
 );
 }
