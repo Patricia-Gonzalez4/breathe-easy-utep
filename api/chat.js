@@ -21,6 +21,17 @@ module.exports = async function handler(req, res) {
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01"
       },
+      const response = await fetch(
+  "https://api.purpleair.com/v1/sensors?fields=name,latitude,longitude,pm2.5_atm,last_seen&nwlat=31.755&nwlng=-106.475&selat=31.735&selng=-106.440",
+  {
+    headers: {
+      "X-API-Key": process.env.PURPLEAIR_API_KEY
+    }
+  }
+);
+
+const data = await response.json();
+console.log(data);
       body: JSON.stringify(req.body)
     });
 
